@@ -12,9 +12,11 @@
 import os
 import numpy
 from PIL import Image
+import matplotlib.pyplot as plt
 
 BLOCKSIZE = 8
 OUTPUT_DIR = "output"
+QUALITY = 3
 
 def read_image_file(path):
     img = Image.open(path)
@@ -23,6 +25,9 @@ def read_image_file(path):
 
 
 def write_image(image_data, path, output_dir=OUTPUT_DIR):
+    if output_dir in (None, "", "."):
+        output_dir = OUTPUT_DIR
+
     img = Image.fromarray(image_data)
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -131,48 +136,172 @@ def idct(image_data, matrix_size=BLOCKSIZE):
     raise ValueError("image_data must be a 2D or 3D numpy array")
 
 
-def: quantize(dct_data, quantization_matrix):
+def get_quantization_matrix(quality=QUALITY, block_size=BLOCKSIZE):
+    if quality < 1:
+        raise ValueError("quality must be a positive integer")
+    if block_size < 2:
+        raise ValueError("block_size must be a positive integer greater than or equal to 2")
+
+    quantize_matrix = numpy.zeros((block_size, block_size), dtype=numpy.float64)
+    for i in range(block_size):
+        for j in range(block_size):
+            quantize_matrix[i, j] = 1 + (i + j + 1) * quality
+    return quantize_matrix
+
+
+def quantize(dct_data, quality=QUALITY, block_size=None):
+    if dct_data.ndim != 2:
+        raise ValueError("dct_data must be a 2D numpy array")
+
+    if block_size is None:
+        block_size = BLOCKSIZE
+        if dct_data.shape[0] < block_size or dct_data.shape[1] < block_size:
+            if dct_data.shape[0] == dct_data.shape[1]:
+                block_size = dct_data.shape[0]
+            else:
+                raise ValueError("dct_data must be square when inferred block_size is used")
+
+    if dct_data.shape[0] % block_size != 0 or dct_data.shape[1] % block_size != 0:
+        raise ValueError(
+            f"dct_data shape must be multiples of block_size={block_size}, got {dct_data.shape}"
+        )
+
+    quantize_matrix = get_quantization_matrix(quality=quality, block_size=block_size)
+    quantization = numpy.zeros(dct_data.shape, dtype=numpy.int64)
+
+    for i in range(0, dct_data.shape[0], block_size):
+        for j in range(0, dct_data.shape[1], block_size):
+            block = dct_data[i:i+block_size, j:j+block_size]
+            quantization[i:i+block_size, j:j+block_size] = numpy.round(block / quantize_matrix).astype(numpy.int64)
+
+    return quantization
+
+
+def reverse_quantize(quantized_data, quality=QUALITY, block_size=None):
+    if quantized_data.ndim != 2:
+        raise ValueError("quantized_data must be a 2D numpy array")
+
+    if block_size is None:
+        block_size = BLOCKSIZE
+        if quantized_data.shape[0] < block_size or quantized_data.shape[1] < block_size:
+            if quantized_data.shape[0] == quantized_data.shape[1]:
+                block_size = quantized_data.shape[0]
+            else:
+                raise ValueError("quantized_data must be square when inferred block_size is used")
+
+    if quantized_data.shape[0] % block_size != 0 or quantized_data.shape[1] % block_size != 0:
+        raise ValueError(
+            f"quantized_data shape must be multiples of block_size={block_size}, got {quantized_data.shape}"
+        )
+
+    quantize_matrix = get_quantization_matrix(quality=quality, block_size=block_size)
+    dequantized = numpy.zeros(quantized_data.shape, dtype=numpy.float64)
+
+    for i in range(0, quantized_data.shape[0], block_size):
+        for j in range(0, quantized_data.shape[1], block_size):
+            block = quantized_data[i:i+block_size, j:j+block_size]
+            dequantized[i:i+block_size, j:j+block_size] = block * quantize_matrix
+
+    return dequantized
+
+
+def _normalize_for_display(data):
+    data = data.astype(numpy.float64)
+    min_value = numpy.min(data)
+    max_value = numpy.max(data)
+    if max_value == min_value:
+        return numpy.zeros(data.shape, dtype=numpy.uint8)
+    return ((data - min_value) * 255.0 / (max_value - min_value)).astype(numpy.uint8)
+
+
+def visualize_jpeg_steps(image_path, quality=QUALITY, block_size=BLOCKSIZE, output_dir=OUTPUT_DIR):
+    if output_dir in (None, "", "."):
+        output_dir = OUTPUT_DIR
+
+    image_data = read_image_file(image_path)
+    dct_coeff = dct(image_data, matrix_size=block_size)
+    quantized = quantize(dct_coeff, quality=quality, block_size=block_size)
+    dequantized = reverse_quantize(quantized, quality=quality, block_size=block_size)
+    reconstructed = idct(dequantized, matrix_size=block_size)
+    reconstructed = numpy.clip(reconstructed, 0, 255).astype(numpy.uint8)
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    original_path = os.path.join(output_dir, "original.png")
+    dct_path = os.path.join(output_dir, "dct_coefficients.png")
+    quant_path = os.path.join(output_dir, "quantifie.png")
+    reconstruction_path = os.path.join(output_dir, "reconstruction.png")
+    compare_path = os.path.join(output_dir, "comparaison.png")
+
+    Image.fromarray(image_data).save(original_path)
+    Image.fromarray(_normalize_for_display(numpy.log1p(numpy.abs(dct_coeff)))).save(dct_path)
+    Image.fromarray(_normalize_for_display(quantized)).save(quant_path)
+    Image.fromarray(reconstructed).save(reconstruction_path)
+
+    fig, axes = plt.subplots(2, 3, figsize=(15, 9))
+    axes[0, 0].imshow(image_data, cmap="gray")
+    axes[0, 0].set_title("Original (padded)")
+    axes[0, 1].imshow(numpy.log1p(numpy.abs(dct_coeff)), cmap="gray")
+    axes[0, 1].set_title("DCT log(1+abs)")
+    axes[0, 2].imshow(quantized, cmap="gray")
+    axes[0, 2].set_title("Quantized coefficients")
+    axes[1, 0].imshow(dequantized, cmap="gray")
+    axes[1, 0].set_title("Dequantized coefficients")
+    axes[1, 1].imshow(reconstructed, cmap="gray")
+    axes[1, 1].set_title("Reconstructed")
+    axes[1, 2].imshow(numpy.abs(image_data.astype(numpy.float64) - reconstructed.astype(numpy.float64)), cmap="hot")
+    axes[1, 2].set_title("Absolute error")
+
+    for row in axes:
+        for ax in row:
+            ax.axis("off")
+
+    plt.tight_layout()
+    fig.savefig(compare_path, dpi=150)
+    plt.close(fig)
+
+    return {
+        "original": original_path,
+        "dct_coefficients": dct_path,
+        "quantified": quant_path,
+        "reconstruction": reconstruction_path,
+        "comparison": compare_path,
+    }
+
+def zigzag(block):
     pass
 
 
-def: reverse_quantize(quantized_data, quantization_matrix):
+def reverse_zigzag(zigzag_data, block_size=BLOCKSIZE):
     pass
 
 
-def: zigzag(block):
+def rle_encode(zigzag_data):
     pass
 
 
-def: reverse_zigzag(zigzag_data, block_size=BLOCKSIZE):
+def rle_decode(rle_data):
     pass
 
 
-def: rle_encode(zigzag_data):
+def huffman_encode(rle_data):
     pass
 
 
-def: rle_decode(rle_data):
-    pass
-
-
-def: huffman_encode(rle_data):
-    pass
-
-
-def: huffman_decode(huffman_data):
+def huffman_decode(huffman_data):
     pass
 
 
 def _run_demo_images():
-    # simply load image, and save it for manual inspection
-    img_test = read_image_file("Capture d’écran du 2026-03-27 01-22-28.png")
-    write_image(img_test, "test1.png", "test")
-    img_test = read_image_file("Capture d’écran du 2026-03-27 16-39-43.png")
-    write_image(img_test, "test2.png", "test")
-    img_test = read_image_file("Capture d’écran du 2026-03-27 18-33-24.png")
-    write_image(img_test, "test3.png", "test")
-    img_test = read_image_file("Capture d’écran du 2026-03-31 13-02-31.png")
-    write_image(img_test, "test4.png", "test")
+    outputs = visualize_jpeg_steps(
+        image_path="Capture d’écran du 2026-03-27 01-22-28.png",
+        quality=QUALITY,
+        block_size=BLOCKSIZE,
+        output_dir=OUTPUT_DIR,
+    )
+    for key, value in outputs.items():
+        print(key + ": " + value)
 
 
 if __name__ == "__main__":
