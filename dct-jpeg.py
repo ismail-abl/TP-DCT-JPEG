@@ -131,6 +131,38 @@ def idct(image_data, matrix_size=BLOCKSIZE):
     raise ValueError("image_data must be a 2D or 3D numpy array")
 
 
+def: quantize(dct_data, quantization_matrix):
+    pass
+
+
+def: reverse_quantize(quantized_data, quantization_matrix):
+    pass
+
+
+def: zigzag(block):
+    pass
+
+
+def: reverse_zigzag(zigzag_data, block_size=BLOCKSIZE):
+    pass
+
+
+def: rle_encode(zigzag_data):
+    pass
+
+
+def: rle_decode(rle_data):
+    pass
+
+
+def: huffman_encode(rle_data):
+    pass
+
+
+def: huffman_decode(huffman_data):
+    pass
+
+
 def _run_demo_images():
     # simply load image, and save it for manual inspection
     img_test = read_image_file("Capture d’écran du 2026-03-27 01-22-28.png")
