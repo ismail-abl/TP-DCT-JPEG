@@ -1,6 +1,6 @@
 # TP-DCT-JPEG
 
-Mini projet autour de la transformee en cosinus discrete (DCT) appliquee a des images.
+Mini projet autour de la transformee en cosinus discrete (DCT) appliquée à des images.
 
 ## Lancement en 1 commande
 
@@ -25,9 +25,4 @@ Tu peux aussi passer des arguments au script Python:
 
 ## Prerequis
 
-- Python 3 installe (commande `python3` disponible)
-
-## Fichiers ajoutes pour le lancement
-
-- `run.sh`: point d'entree unique
-- `requirements.txt`: dependances Python runtime
+- Python
