@@ -8,48 +8,45 @@
 7) zigzag
 8) codage (RLE puis Huffman)
 """
-
+import os
 import numpy
 from PIL import Image
-from matplotlib import pyplot as plt
+from matplotlib import pyplot
 
 BLOCKSIZE = 8
-
-JPEG_LUMA_QUANT = numpy.array(
-    [
-        [16, 11, 10, 16, 24, 40, 51, 61],
-        [12, 12, 14, 19, 26, 58, 60, 55],
-        [14, 13, 16, 24, 40, 57, 69, 56],
-        [14, 17, 22, 29, 51, 87, 80, 62],
-        [18, 22, 37, 56, 68, 109, 103, 77],
-        [24, 35, 55, 64, 81, 104, 113, 92],
-        [49, 64, 78, 87, 103, 121, 120, 101],
-        [72, 92, 95, 98, 112, 100, 103, 99],
-    ],
-    dtype=numpy.float64,
-)
+OUTPUT_DIR = "output"
 
 def read_image_file(path):
     img = Image.open(path)
     image_data = numpy.array(img)
-    return pad_image(image_data, BLOCKSIZE)
+    return pad_image(RGB_to_Grayscale(image_data), BLOCKSIZE)
 
-def write_image(image_data, path):
+def write_image(image_data, path, output_dir=OUTPUT_DIR):
     img = Image.fromarray(image_data)
-    img.save(path)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    img.save(output_dir + "/" + path)
 
 # simple ajout noir bas-droite au prochain multiple de bloc
 def pad_image(image_data, block_size):
     pad_height = (block_size - (image_data.shape[0] % block_size)) % block_size
+    before_pad_h, after_pad_h = pad_height // 2, pad_height - (pad_height // 2)
     pad_width = (block_size - (image_data.shape[1] % block_size)) % block_size
+    before_pad_w, after_pad_w = pad_width // 2, pad_width - (pad_width // 2)
     if image_data.ndim == 2:
-        pad_spec = ((0, pad_height), (0, pad_width))
+        pad_spec = ((before_pad_h, after_pad_h), (before_pad_w, after_pad_w))
     elif image_data.ndim == 3:
-        pad_spec = ((0, pad_height), (0, pad_width), (0, 0))
+        pad_spec = ((before_pad_h, after_pad_h), (before_pad_w, after_pad_w), (0, 0))
     else:
-        raise ValueError("image_data must be a 2D or 3D numpy array")
-    return numpy.pad(image_data, pad_spec, mode="constant", constant_values=0)
-
+        raise ValueError("image_data must be a 2D(grayscale) or 3D(RGB) numpy array")
+    
+    padded_image = numpy.pad(image_data, pad_spec, mode='constant', constant_values=0)
+    
+    if padded_image.shape[0] % block_size == 0 and padded_image.shape[1] % block_size == 0:
+        return padded_image
+    else:
+        raise ValueError("incorrectly padded image: expected multiple of {}, got {}".format(BLOCKSIZE, padded_image.shape))
+    
 #TODO verifier les coeffs
 def RGB_to_Grayscale(image_data):
     if image_data.ndim == 2:
@@ -57,7 +54,7 @@ def RGB_to_Grayscale(image_data):
     elif image_data.ndim == 3:
         return numpy.mean(image_data, axis=2).astype(numpy.uint8)
     else:
-        print("Error: image_data must be a 2D or 3D numpy array")
+        print("Error: image_data must be a 2D(grayscale) or 3D(RGB) numpy array")
         exit(1)
 
 def RGB_to_YCbCr(image_data):
@@ -98,3 +95,28 @@ def dct(image_data):
     print("Error: image_data must be a 2D or 3D numpy array")
     exit(1)
             
+def idct():
+    pass
+
+
+
+
+
+
+
+
+
+
+
+
+
+# simply load image, and and save it (do i really need pyplot ?)
+img_test = read_image_file("Capture d’écran du 2026-03-27 01-22-28.png")
+write_image(img_test, "test1.png", "test")
+img_test = read_image_file("Capture d’écran du 2026-03-27 16-39-43.png")
+write_image(img_test, "test2.png", "test")
+img_test = read_image_file("Capture d’écran du 2026-03-27 18-33-24.png")
+write_image(img_test, "test3.png", "test")
+img_test = read_image_file("Capture d’écran du 2026-03-31 13-02-31.png")
+write_image(img_test, "test4.png", "test")
+
